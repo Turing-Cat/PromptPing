@@ -1,0 +1,44 @@
+{
+  "extName": {
+    "message": "PromptPing"
+  },
+  "extDescription": {
+    "message": "Notify when ChatGPT or Claude finishes replying in the background and export the current chat to Markdown."
+  },
+  "notificationTitle": {
+    "message": "PromptPing"
+  },
+  "notificationMessageSuffix": {
+    "message": "response finished"
+  },
+  "fallbackConversationTitle": {
+    "message": "Conversation"
+  },
+  "popupEyebrow": {
+    "message": "Chat Tools"
+  },
+  "popupSupportedTitle": {
+    "message": "Page supported"
+  },
+  "popupUnsupportedTitle": {
+    "message": "Page unsupported"
+  },
+  "popupUnsupportedDescription": {
+    "message": "Open a ChatGPT, Claude, or DeepSeek conversation to export or receive notifications."
+  },
+  "popupSiteLabel": {
+    "message": "Site"
+  },
+  "popupExportButton": {
+    "message": "Export current chat"
+  },
+  "popupExporting": {
+    "message": "Preparing Markdown export..."
+  },
+  "popupDownloadStarted": {
+    "message": "Markdown download started."
+  },
+  "popupDownloadError": {
+    "message": "Export failed. Reload the chat page and try again."
+  }
+}

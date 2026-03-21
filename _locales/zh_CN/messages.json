@@ -1,0 +1,44 @@
+{
+  "extName": {
+    "message": "PromptPing"
+  },
+  "extDescription": {
+    "message": "当 ChatGPT 或 Claude 在后台标签页回复完成时提醒，并支持把当前会话导出为 Markdown。"
+  },
+  "notificationTitle": {
+    "message": "PromptPing"
+  },
+  "notificationMessageSuffix": {
+    "message": "回复已完成"
+  },
+  "fallbackConversationTitle": {
+    "message": "当前会话"
+  },
+  "popupEyebrow": {
+    "message": "聊天工具"
+  },
+  "popupSupportedTitle": {
+    "message": "当前页面已支持"
+  },
+  "popupUnsupportedTitle": {
+    "message": "当前页面不受支持"
+  },
+  "popupUnsupportedDescription": {
+    "message": "请打开 ChatGPT、Claude 或 DeepSeek 的会话页面后再使用导出和提醒功能。"
+  },
+  "popupSiteLabel": {
+    "message": "站点"
+  },
+  "popupExportButton": {
+    "message": "导出当前会话"
+  },
+  "popupExporting": {
+    "message": "正在生成 Markdown..."
+  },
+  "popupDownloadStarted": {
+    "message": "Markdown 下载已开始。"
+  },
+  "popupDownloadError": {
+    "message": "导出失败，请刷新聊天页面后重试。"
+  }
+}

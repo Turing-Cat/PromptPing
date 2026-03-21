@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "default_locale": "en",
+  "name": "__MSG_extName__",
+  "description": "__MSG_extDescription__",
+  "version": "0.1.0",
+  "permissions": ["downloads", "notifications", "scripting", "tabs"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "https://chat.deepseek.com/*",
+    "https://www.deepseek.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/index.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "__MSG_extName__",
+    "default_popup": "src/popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://chat.deepseek.com/*",
+        "https://www.deepseek.com/*"
+      ],
+      "js": ["src/content/index.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/content/runtime.js",
+        "src/content/completion-tracker.js",
+        "src/core/*.js",
+        "src/adapters/*.js"
+      ],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://chat.deepseek.com/*",
+        "https://www.deepseek.com/*"
+      ]
+    }
+  ]
+}
