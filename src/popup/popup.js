@@ -4,6 +4,7 @@ import {
   toMarkdown,
 } from "../core/markdown.js";
 import { isSupportedUrl } from "../adapters/index.js";
+import { ensureTabReady } from "./support.js";
 
 const elements = {
   eyebrow: document.querySelector("#eyebrow"),
@@ -37,21 +38,11 @@ async function getSupportStatus(tabId) {
   return chrome.tabs.sendMessage(tabId, { type: "PING_SUPPORT_STATUS" });
 }
 
-async function ensureTabReady(tab) {
-  if (!tab?.id || !isSupportedUrl(tab.url)) {
-    return false;
-  }
-
-  try {
-    await getSupportStatus(tab.id);
-    return true;
-  } catch (_error) {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["src/content/index.js"],
-    });
-    return true;
-  }
+async function injectContentScript(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["src/content/index.js"],
+  });
 }
 
 async function exportConversation(tabId) {
@@ -93,12 +84,17 @@ async function init() {
 
   try {
     const tab = await getCurrentTab();
-    if (!tab?.id || !(await ensureTabReady(tab))) {
+    const status = await ensureTabReady(tab, {
+      isSupportedUrl,
+      getSupportStatus,
+      injectContentScript,
+    });
+
+    if (!status) {
       setSupportedState({ supported: false });
       return;
     }
 
-    const status = await getSupportStatus(tab.id);
     setSupportedState({
       supported: Boolean(status?.supported),
       siteName: status?.siteName,

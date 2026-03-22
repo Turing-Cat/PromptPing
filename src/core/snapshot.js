@@ -2,6 +2,8 @@ function collapseWhitespace(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+const KNOWN_SITE_SUFFIXES = ["ChatGPT", "Claude", "DeepSeek"];
+
 function collectText(node, parts) {
   if (!node) {
     return;
@@ -118,5 +120,6 @@ export function sanitizeConversationTitle(title) {
     return "Conversation";
   }
 
-  return normalized.replace(/\s*[-|]\s*(ChatGPT|Claude)\s*$/i, "").trim();
+  const sitePattern = KNOWN_SITE_SUFFIXES.join("|");
+  return normalized.replace(new RegExp(`\\s*[-|]\\s*(${sitePattern})\\s*$`, "i"), "").trim();
 }

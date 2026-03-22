@@ -22,6 +22,21 @@ async function ensureContentScriptInjected(tabId) {
   });
 }
 
+async function ensureSupportedTabInjected(tabId) {
+  if (!tabId) {
+    return;
+  }
+
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (isSupportedUrl(tab?.url)) {
+      await ensureContentScriptInjected(tabId);
+    }
+  } catch (_error) {
+    // Ignore tabs that disappear during async activation/update handling.
+  }
+}
+
 async function injectSupportedOpenTabs() {
   const tabs = await chrome.tabs.query({});
 
@@ -91,4 +106,14 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   void injectSupportedOpenTabs();
+});
+
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  void ensureSupportedTabInjected(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete" && isSupportedUrl(tab?.url)) {
+    void ensureContentScriptInjected(tabId);
+  }
 });
