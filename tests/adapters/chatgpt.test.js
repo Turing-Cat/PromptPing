@@ -63,3 +63,29 @@ test("ChatGPTAdapter detects active generation from aria-label controls", () => 
 
   assert.equal(ChatGPTAdapter.isGenerating(snapshot), true);
 });
+
+test("ChatGPTAdapter detects active generation from Chinese stop text", () => {
+  const snapshot = element("main", {}, [
+    element("div", { attrs: { "data-message-author-role": "assistant" } }, [
+      element("p", {}, ["Streaming"]),
+    ]),
+    element("button", {}, ["停止生成"]),
+  ]);
+
+  assert.equal(ChatGPTAdapter.isGenerating(snapshot), true);
+});
+
+test("ChatGPTAdapter detects active generation from structure-first controls", () => {
+  const snapshot = element("main", {}, [
+    element("div", { attrs: { "data-message-author-role": "assistant" } }, [
+      element("p", {}, ["Streaming"]),
+    ]),
+    element(
+      "button",
+      { attrs: { "data-testid": "stop-button", "aria-label": "x" } },
+      [element("svg", { attrs: { "aria-hidden": "true" } }, [])],
+    ),
+  ]);
+
+  assert.equal(ChatGPTAdapter.isGenerating(snapshot), true);
+});
