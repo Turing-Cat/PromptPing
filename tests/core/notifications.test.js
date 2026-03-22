@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   createResponseFingerprint,
+  getNotificationIconPath,
   shouldSendCompletionNotification,
 } from "../../src/core/notifications.js";
 
@@ -51,3 +52,6 @@ test("shouldSendCompletionNotification only notifies background tabs with new fi
   );
 });
 
+test("getNotificationIconPath uses a raster icon for Chrome notifications", () => {
+  assert.equal(getNotificationIconPath(), "assets/icon.png");
+});

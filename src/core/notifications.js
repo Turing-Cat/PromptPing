@@ -2,6 +2,10 @@ function normalizePart(value) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+export function getNotificationIconPath() {
+  return "assets/icon.png";
+}
+
 export function createResponseFingerprint({ site, title, text }) {
   const input = [normalizePart(site), normalizePart(title), normalizePart(text)]
     .filter(Boolean)
@@ -32,4 +36,3 @@ export function shouldSendCompletionNotification({
 
   return fingerprint !== lastFingerprint;
 }
-

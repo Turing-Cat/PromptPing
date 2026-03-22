@@ -1,4 +1,7 @@
-import { shouldSendCompletionNotification } from "../core/notifications.js";
+import {
+  getNotificationIconPath,
+  shouldSendCompletionNotification,
+} from "../core/notifications.js";
 
 const lastFingerprintByTabId = new Map();
 const SUPPORTED_HOST_PATTERN =
@@ -63,7 +66,7 @@ async function notifyCompletion({ senderTabId, fingerprint, site, conversationTi
 
   await chrome.notifications.create({
     type: "basic",
-    iconUrl: chrome.runtime.getURL("assets/icon.svg"),
+    iconUrl: chrome.runtime.getURL(getNotificationIconPath()),
     title: chrome.i18n.getMessage("notificationTitle"),
     message,
   });
