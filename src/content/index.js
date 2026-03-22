@@ -1,7 +1,7 @@
 const bootFlag = "__promptPingBooted__";
 
-if (!window[bootFlag]) {
-  window[bootFlag] = true;
+if (!globalThis[bootFlag]) {
+  globalThis[bootFlag] = true;
 
   (async () => {
     const runtimeUrl = chrome.runtime.getURL("src/content/runtime.js");

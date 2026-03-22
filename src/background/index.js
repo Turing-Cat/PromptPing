@@ -44,15 +44,14 @@ async function getActiveTabId() {
 async function notifyCompletion({ senderTabId, fingerprint, site, conversationTitle }) {
   const lastFingerprint = lastFingerprintByTabId.get(senderTabId) ?? null;
   const activeTabId = await getActiveTabId();
+  const shouldNotify = shouldSendCompletionNotification({
+    activeTabId,
+    senderTabId,
+    fingerprint,
+    lastFingerprint,
+  });
 
-  if (
-    !shouldSendCompletionNotification({
-      activeTabId,
-      senderTabId,
-      fingerprint,
-      lastFingerprint,
-    })
-  ) {
+  if (!shouldNotify) {
     return;
   }
 

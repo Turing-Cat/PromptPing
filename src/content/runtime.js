@@ -3,7 +3,11 @@ import { createDomSnapshot } from "../core/snapshot.js";
 import { transitionCompletionState } from "./completion-tracker.js";
 
 function sendRuntimeMessage(message) {
-  return chrome.runtime.sendMessage(message).catch(() => null);
+  try {
+    return Promise.resolve(chrome.runtime.sendMessage(message)).catch(() => null);
+  } catch (_error) {
+    return Promise.resolve(null);
+  }
 }
 
 export function bootContentScript() {
@@ -29,9 +33,11 @@ export function bootContentScript() {
 
   async function analyze() {
     const snapshot = buildSnapshot();
+    const isGenerating = adapter.isGenerating(snapshot);
+    const latestFingerprint = adapter.getLatestAssistantFingerprint(snapshot, document.title);
     const nextState = transitionCompletionState(state, {
-      isGenerating: adapter.isGenerating(snapshot),
-      latestFingerprint: adapter.getLatestAssistantFingerprint(snapshot, document.title),
+      isGenerating,
+      latestFingerprint,
     });
 
     if (nextState.shouldNotify) {
@@ -89,4 +95,3 @@ export function bootContentScript() {
 
   void analyze();
 }
-
