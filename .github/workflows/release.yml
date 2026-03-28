@@ -1,0 +1,49 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build content script
+        run: npm run build:content
+
+      - name: Create Extension Package
+        run: |
+          zip -r PromptPing-${{ github.ref_name }}.zip \
+            manifest.json \
+            package.json \
+            assets/ \
+            src/ \
+            _locales/ \
+            README.md \
+            -x "*.git*" "node_modules/*" "tests/*" "src/content/bootstrap.js" "src/content/boot-instance.js" "src/content/deepseek-history.js" "src/content/completion-tracker.js" "src/content/runtime.js"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PromptPing-${{ github.ref_name }}.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
