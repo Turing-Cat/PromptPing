@@ -88,8 +88,7 @@ async function notifyCompletion({ senderTabId, fingerprint, site, conversationTi
 
   unreadCount += 1;
   await chrome.action.setBadgeText({ text: String(unreadCount) });
-  await chrome.action.setBadgeBackgroundColor({ color: "#c44b2d" });
-}
+  await chrome.action.setBadgeBackgroundColor({ color: "#0ea5e9" });}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "MODEL_RESPONSE_COMPLETED") {

@@ -12,6 +12,7 @@ const elements = {
   statusText: document.querySelector("#statusText"),
   siteText: document.querySelector("#siteText"),
   exportButton: document.querySelector("#exportButton"),
+  refreshButton: document.querySelector("#refreshButton"),
   btnLabel: document.querySelector("#btnLabel"),
   statusCard: document.querySelector("#statusCard"),
   toast: document.querySelector("#toast"),
@@ -74,6 +75,46 @@ async function injectContentScript(tabId) {
   });
 }
 
+async function checkStatus() {
+  try {
+    // Show initial loading state
+    elements.eyebrow.textContent = t("popupEyebrow");
+    setCardState("loading");
+    elements.title.textContent = t("popupLoadingTitle") || "Checking status...";
+    elements.exportButton.disabled = true;
+    elements.refreshButton.setAttribute("data-loading", "");
+
+    const tab = await getCurrentTab();
+    if (!tab?.id) {
+      setSupportedState({ supported: false });
+      return;
+    }
+
+    const status = await ensureTabReady(tab, {
+      isSupportedUrl,
+      getSupportStatus,
+      injectContentScript,
+      attempts: 8,
+      delayMs: 100,
+    });
+
+    if (!status) {
+      setSupportedState({ supported: false });
+      return;
+    }
+
+    setSupportedState({
+      supported: Boolean(status?.supported),
+      siteName: status?.siteName,
+      conversationTitle: status?.conversationTitle,
+    });
+  } catch (_error) {
+    setSupportedState({ supported: false });
+  } finally {
+    elements.refreshButton.removeAttribute("data-loading");
+  }
+}
+
 async function exportConversation(tabId) {
   setCardState("loading");
   elements.exportButton.setAttribute("data-loading", "");
@@ -123,27 +164,11 @@ async function init() {
     await exportConversation(tab.id);
   });
 
-  try {
-    const tab = await getCurrentTab();
-    const status = await ensureTabReady(tab, {
-      isSupportedUrl,
-      getSupportStatus,
-      injectContentScript,
-    });
+  elements.refreshButton.addEventListener("click", () => {
+    checkStatus();
+  });
 
-    if (!status) {
-      setSupportedState({ supported: false });
-      return;
-    }
-
-    setSupportedState({
-      supported: Boolean(status?.supported),
-      siteName: status?.siteName,
-      conversationTitle: status?.conversationTitle,
-    });
-  } catch (_error) {
-    setSupportedState({ supported: false });
-  }
+  checkStatus();
 }
 
 init();

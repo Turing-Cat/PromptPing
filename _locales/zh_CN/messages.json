@@ -29,6 +29,9 @@
   "popupSiteLabel": {
     "message": "站点"
   },
+  "popupLoadingTitle": {
+    "message": "正在检查页面..."
+  },
   "popupExportButton": {
     "message": "导出当前会话"
   },
