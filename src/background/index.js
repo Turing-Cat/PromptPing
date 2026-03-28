@@ -4,6 +4,7 @@ import {
 } from "../core/notifications.js";
 
 const lastFingerprintByTabId = new Map();
+let unreadCount = 0;
 const SUPPORTED_HOST_PATTERN =
   /^https:\/\/(chatgpt\.com|chat\.openai\.com|claude\.ai|chat\.deepseek\.com|www\.deepseek\.com)\//i;
 
@@ -84,6 +85,10 @@ async function notifyCompletion({ senderTabId, fingerprint, site, conversationTi
     title: chrome.i18n.getMessage("notificationTitle"),
     message,
   });
+
+  unreadCount += 1;
+  await chrome.action.setBadgeText({ text: String(unreadCount) });
+  await chrome.action.setBadgeBackgroundColor({ color: "#c44b2d" });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -106,6 +111,12 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   void injectSupportedOpenTabs();
+});
+
+// Clear badge when notification is clicked
+chrome.notifications.onClicked.addListener(() => {
+  unreadCount = 0;
+  chrome.action.setBadgeText({ text: "" });
 });
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {

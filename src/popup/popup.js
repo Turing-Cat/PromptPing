@@ -12,20 +12,49 @@ const elements = {
   statusText: document.querySelector("#statusText"),
   siteText: document.querySelector("#siteText"),
   exportButton: document.querySelector("#exportButton"),
+  btnLabel: document.querySelector("#btnLabel"),
+  statusCard: document.querySelector("#statusCard"),
+  toast: document.querySelector("#toast"),
 };
 
 function t(key) {
   return chrome.i18n.getMessage(key);
 }
 
+let toastTimer = null;
+
+function showToast(message, duration = 2500) {
+  clearTimeout(toastTimer);
+  elements.toast.textContent = message;
+  elements.toast.setAttribute("data-visible", "");
+
+  toastTimer = setTimeout(() => {
+    elements.toast.removeAttribute("data-visible");
+  }, duration);
+}
+
+function setCardState(state) {
+  elements.statusCard.setAttribute("data-state", state);
+}
+
 function setSupportedState({ supported, siteName = "", conversationTitle = "" }) {
   elements.eyebrow.textContent = t("popupEyebrow");
-  elements.title.textContent = supported ? t("popupSupportedTitle") : t("popupUnsupportedTitle");
-  elements.statusText.textContent = supported
-    ? conversationTitle || t("fallbackConversationTitle")
-    : t("popupUnsupportedDescription");
-  elements.siteText.textContent = supported ? `${t("popupSiteLabel")}: ${siteName}` : "";
-  elements.exportButton.textContent = t("popupExportButton");
+
+  if (supported) {
+    setCardState("supported");
+    elements.title.textContent = t("popupSupportedTitle");
+    elements.statusText.textContent =
+      conversationTitle || t("fallbackConversationTitle");
+  } else {
+    setCardState("unsupported");
+    elements.title.textContent = t("popupUnsupportedTitle");
+    elements.statusText.textContent = t("popupUnsupportedDescription");
+  }
+
+  elements.siteText.textContent = supported
+    ? `${t("popupSiteLabel")}: ${siteName}`
+    : "";
+  elements.btnLabel.textContent = t("popupExportButton");
   elements.exportButton.disabled = !supported;
 }
 
@@ -46,40 +75,52 @@ async function injectContentScript(tabId) {
 }
 
 async function exportConversation(tabId) {
-  elements.statusText.textContent = t("popupExporting");
+  setCardState("loading");
+  elements.exportButton.setAttribute("data-loading", "");
+  elements.btnLabel.textContent = t("popupExporting");
 
-  const conversation = await chrome.tabs.sendMessage(tabId, {
-    type: "EXPORT_CURRENT_CONVERSATION",
-  });
+  try {
+    const conversation = await chrome.tabs.sendMessage(tabId, {
+      type: "EXPORT_CURRENT_CONVERSATION",
+    });
 
-  const markdown = toMarkdown(conversation);
-  const downloadUrl = buildMarkdownDownloadUrl(markdown);
-  const filename = buildDownloadFilename({
-    site: conversation.site,
-    title: conversation.title,
-  });
+    const markdown = toMarkdown(conversation);
+    const downloadUrl = buildMarkdownDownloadUrl(markdown);
+    const filename = buildDownloadFilename({
+      site: conversation.site,
+      title: conversation.title,
+    });
 
-  await chrome.downloads.download({
-    url: downloadUrl,
-    filename,
-    saveAs: true,
-  });
+    await chrome.downloads.download({
+      url: downloadUrl,
+      filename,
+      saveAs: true,
+    });
 
-  elements.statusText.textContent = t("popupDownloadStarted");
+    setCardState("success");
+    elements.statusText.textContent = t("popupDownloadStarted");
+    showToast(t("popupDownloadStarted"));
+  } catch (_error) {
+    setCardState("error");
+    elements.statusText.textContent = t("popupDownloadError");
+    showToast(t("popupDownloadError"));
+  } finally {
+    elements.exportButton.removeAttribute("data-loading");
+    elements.btnLabel.textContent = t("popupExportButton");
+  }
 }
 
 async function init() {
+  // Clear toolbar badge when popup opens
+  chrome.action.setBadgeText({ text: "" });
+
   elements.exportButton.addEventListener("click", async () => {
     const tab = await getCurrentTab();
     if (!tab?.id) {
       return;
     }
 
-    try {
-      await exportConversation(tab.id);
-    } catch (_error) {
-      elements.statusText.textContent = t("popupDownloadError");
-    }
+    await exportConversation(tab.id);
   });
 
   try {
