@@ -4,13 +4,14 @@
   "name": "__MSG_extName__",
   "description": "__MSG_extDescription__",
   "version": "0.1.0",
-  "permissions": ["downloads", "notifications", "scripting", "tabs"],
+  "permissions": ["downloads", "notifications", "scripting", "tabs", "webRequest"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://claude.ai/*",
     "https://chat.deepseek.com/*",
-    "https://www.deepseek.com/*"
+    "https://www.deepseek.com/*",
+    "https://gemini.google.com/*"
   ],
   "background": {
     "service_worker": "src/background/index.js",
@@ -39,7 +40,8 @@
         "https://chat.openai.com/*",
         "https://claude.ai/*",
         "https://chat.deepseek.com/*",
-        "https://www.deepseek.com/*"
+        "https://www.deepseek.com/*",
+        "https://gemini.google.com/*"
       ],
       "js": ["src/content/index.js"],
       "run_at": "document_idle"

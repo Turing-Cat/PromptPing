@@ -26,16 +26,18 @@ export function transitionCompletionState(previousState, currentState) {
       };
     }
 
+    const markerChanged = latestMarker !== previousCompletedMarker;
+    const fingerprintChanged =
+      Boolean(latestFingerprint) && latestFingerprint !== previousCompletedFingerprint;
     const shouldNotify =
-      latestMarker !== previousCompletedMarker &&
-      (previousState.wasGenerating || latestMarker !== previousObservedMarker);
+      markerChanged && (previousState.wasGenerating || fingerprintChanged);
 
     return {
       wasGenerating: false,
-      lastCompletedFingerprint: latestMarker !== previousCompletedMarker
+      lastCompletedFingerprint: shouldNotify
         ? latestFingerprint
         : previousCompletedFingerprint,
-      lastCompletedMarker: latestMarker !== previousCompletedMarker
+      lastCompletedMarker: shouldNotify
         ? latestMarker
         : previousCompletedMarker,
       lastObservedMarker: latestMarker,

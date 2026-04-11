@@ -7,10 +7,14 @@ It notifies you when a reply is finished and lets you export the current convers
 
 ## Status
 
-- Current support: `ChatGPT`, `Claude`, `DeepSeek`
+- Current support:
+  - `ChatGPT`: notifications and export
+  - `Claude`: notifications and export
+  - `DeepSeek`: notifications and export
+  - `Gemini`: notifications only
 - Included:
   - Browser notification when a reply is finished
-  - Export current conversation to Markdown
+  - Export current conversation to Markdown on supported sites
   - Chinese and English UI
 
 ## Install
@@ -22,8 +26,8 @@ It notifies you when a reply is finished and lets you export the current convers
 
 ## Usage
 
-- Open a ChatGPT, Claude, or DeepSeek conversation page
-- Click the extension icon to export the current chat
+- Open a ChatGPT, Claude, DeepSeek, or Gemini conversation page
+- On ChatGPT, Claude, or DeepSeek, click the extension icon to export the current chat
 - Switch to another tab and wait for the reply to finish, then the browser will show a notification
 
 ## Notes

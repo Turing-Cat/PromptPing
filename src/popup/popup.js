@@ -38,7 +38,12 @@ function setCardState(state) {
   elements.statusCard.setAttribute("data-state", state);
 }
 
-function setSupportedState({ supported, siteName = "", conversationTitle = "" }) {
+function setSupportedState({
+  supported,
+  siteName = "",
+  conversationTitle = "",
+  exportSupported = true,
+}) {
   elements.eyebrow.textContent = t("popupEyebrow");
 
   if (supported) {
@@ -56,7 +61,7 @@ function setSupportedState({ supported, siteName = "", conversationTitle = "" })
     ? `${t("popupSiteLabel")}: ${siteName}`
     : "";
   elements.btnLabel.textContent = t("popupExportButton");
-  elements.exportButton.disabled = !supported;
+  elements.exportButton.disabled = !supported || !exportSupported;
 }
 
 async function getCurrentTab() {
@@ -107,6 +112,7 @@ async function checkStatus() {
       supported: Boolean(status?.supported),
       siteName: status?.siteName,
       conversationTitle: status?.conversationTitle,
+      exportSupported: status?.exportSupported,
     });
   } catch (_error) {
     setSupportedState({ supported: false });

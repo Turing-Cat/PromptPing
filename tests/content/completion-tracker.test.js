@@ -94,3 +94,89 @@ test("transitionCompletionState emits a completion for a new finished assistant 
     shouldNotify: true,
   });
 });
+
+test("transitionCompletionState does not emit a completion when only the user-turn marker advances", () => {
+  const state = transitionCompletionState(
+    {
+      wasGenerating: false,
+      lastCompletedFingerprint: "same-fingerprint",
+      lastCompletedMarker: "assistant-1",
+      lastObservedMarker: "assistant-1",
+    },
+    {
+      isGenerating: false,
+      latestFingerprint: "same-fingerprint",
+      latestMarker: "assistant-2",
+    },
+  );
+
+  assert.deepEqual(state, {
+    wasGenerating: false,
+    lastCompletedFingerprint: "same-fingerprint",
+    lastCompletedMarker: "assistant-1",
+    lastObservedMarker: "assistant-2",
+    shouldNotify: false,
+  });
+});
+
+test("transitionCompletionState emits a completion when the same marker later gets a new fingerprint", () => {
+  const pendingTurnState = transitionCompletionState(
+    {
+      wasGenerating: false,
+      lastCompletedFingerprint: "old-fingerprint",
+      lastCompletedMarker: "assistant-1",
+      lastObservedMarker: "assistant-1",
+    },
+    {
+      isGenerating: false,
+      latestFingerprint: "old-fingerprint",
+      latestMarker: "assistant-2",
+    },
+  );
+
+  assert.deepEqual(pendingTurnState, {
+    wasGenerating: false,
+    lastCompletedFingerprint: "old-fingerprint",
+    lastCompletedMarker: "assistant-1",
+    lastObservedMarker: "assistant-2",
+    shouldNotify: false,
+  });
+
+  const completedState = transitionCompletionState(pendingTurnState, {
+    isGenerating: false,
+    latestFingerprint: "new-fingerprint",
+    latestMarker: "assistant-2",
+  });
+
+  assert.deepEqual(completedState, {
+    wasGenerating: false,
+    lastCompletedFingerprint: "new-fingerprint",
+    lastCompletedMarker: "assistant-2",
+    lastObservedMarker: "assistant-2",
+    shouldNotify: true,
+  });
+});
+
+test("transitionCompletionState still emits when generation was observed even if the fingerprint repeats", () => {
+  const state = transitionCompletionState(
+    {
+      wasGenerating: true,
+      lastCompletedFingerprint: "same-fingerprint",
+      lastCompletedMarker: "assistant-1",
+      lastObservedMarker: "assistant-2",
+    },
+    {
+      isGenerating: false,
+      latestFingerprint: "same-fingerprint",
+      latestMarker: "assistant-2",
+    },
+  );
+
+  assert.deepEqual(state, {
+    wasGenerating: false,
+    lastCompletedFingerprint: "same-fingerprint",
+    lastCompletedMarker: "assistant-2",
+    lastObservedMarker: "assistant-2",
+    shouldNotify: true,
+  });
+});

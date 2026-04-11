@@ -6,6 +6,18 @@ export function getNotificationIconPath() {
   return "assets/icon.png";
 }
 
+export function createChromeNotificationOptions({ iconUrl, title, message }) {
+  return {
+    type: "basic",
+    iconUrl,
+    title,
+    message,
+    priority: 2,
+    requireInteraction: true,
+    silent: false,
+  };
+}
+
 export function createResponseFingerprint({ site, title, text }) {
   const input = [normalizePart(site), normalizePart(title), normalizePart(text)]
     .filter(Boolean)
@@ -25,12 +37,17 @@ export function shouldSendCompletionNotification({
   senderTabId,
   fingerprint,
   lastFingerprint,
+  wasHidden = false,
 }) {
   if (!fingerprint) {
     return false;
   }
 
-  if (senderTabId == null || senderTabId === activeTabId) {
+  if (senderTabId == null) {
+    return false;
+  }
+
+  if (senderTabId === activeTabId && !wasHidden) {
     return false;
   }
 

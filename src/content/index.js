@@ -19,7 +19,7 @@
   function collapseWhitespace(value) {
     return String(value ?? "").replace(/\s+/g, " ").trim();
   }
-  var KNOWN_SITE_SUFFIXES = ["ChatGPT", "Claude", "DeepSeek"];
+  var KNOWN_SITE_SUFFIXES = ["ChatGPT", "Claude", "DeepSeek", "Gemini"];
   function collectText(node, parts) {
     if (!node) {
       return;
@@ -604,8 +604,343 @@
     }
   };
 
+  // src/content/gemini-completion-tracker.js
+  var GEMINI_IDLE_STABILITY_DELAY_MS = 750;
+  function normalizeGeminiState(previousState) {
+    return {
+      initialized: Boolean(previousState?.initialized),
+      wasGenerating: Boolean(previousState?.wasGenerating),
+      lastCompletedFingerprint: previousState?.lastCompletedFingerprint ?? null,
+      lastCompletedMarker: previousState?.lastCompletedMarker ?? null,
+      lastObservedMarker: previousState?.lastObservedMarker ?? null,
+      lastObservedAssistantCount: Number(previousState?.lastObservedAssistantCount ?? 0),
+      turnStartAssistantCount: Number(previousState?.turnStartAssistantCount ?? 0),
+      lastSeenFingerprint: previousState?.lastSeenFingerprint ?? null,
+      sawTurnActivity: Boolean(previousState?.sawTurnActivity),
+      idleStableFingerprint: previousState?.idleStableFingerprint ?? null,
+      idleStablePassCount: Number(previousState?.idleStablePassCount ?? 0),
+      followUpDelayMs: previousState?.followUpDelayMs ?? null
+    };
+  }
+  function createCompletionFingerprint(userTurnMarker, latestFingerprint) {
+    if (!userTurnMarker || !latestFingerprint) {
+      return null;
+    }
+    return `${userTurnMarker}|${latestFingerprint}`;
+  }
+  function transitionGeminiCompletionState(previousState, currentState) {
+    const state = normalizeGeminiState(previousState);
+    const latestUserTurnMarker = currentState.latestUserTurnMarker ?? null;
+    const userTurnCount = Number(currentState.userTurnCount ?? 0);
+    const assistantTurnCount = Number(currentState.assistantTurnCount ?? 0);
+    const latestFingerprint = currentState.latestFingerprint ?? null;
+    const isGenerating = Boolean(currentState.isGenerating);
+    const assistantAligned = userTurnCount > 0 && assistantTurnCount >= userTurnCount;
+    const completionFingerprint = createCompletionFingerprint(
+      latestUserTurnMarker,
+      latestFingerprint
+    );
+    if (!latestUserTurnMarker) {
+      return {
+        ...state,
+        initialized: true,
+        wasGenerating: isGenerating,
+        lastObservedAssistantCount: assistantTurnCount,
+        lastSeenFingerprint: latestFingerprint,
+        followUpDelayMs: null,
+        shouldNotify: false
+      };
+    }
+    if (!state.initialized) {
+      const looksComplete = !isGenerating && assistantAligned && completionFingerprint;
+      return {
+        ...state,
+        initialized: true,
+        wasGenerating: isGenerating,
+        lastCompletedFingerprint: looksComplete ? completionFingerprint : null,
+        lastCompletedMarker: looksComplete ? latestUserTurnMarker : null,
+        lastObservedMarker: latestUserTurnMarker,
+        lastObservedAssistantCount: assistantTurnCount,
+        turnStartAssistantCount: assistantTurnCount,
+        lastSeenFingerprint: latestFingerprint,
+        sawTurnActivity: false,
+        idleStableFingerprint: null,
+        idleStablePassCount: 0,
+        followUpDelayMs: null,
+        shouldNotify: false
+      };
+    }
+    const isNewTurn = latestUserTurnMarker !== state.lastObservedMarker;
+    if (isNewTurn) {
+      const assistantAlreadyAdvanced = assistantTurnCount > state.lastObservedAssistantCount;
+      const fingerprintAlreadyAdvanced = Boolean(latestFingerprint) && latestFingerprint !== state.lastSeenFingerprint;
+      const startedWithCompletedAssistant = !isGenerating && assistantAligned && completionFingerprint && (assistantAlreadyAdvanced || fingerprintAlreadyAdvanced);
+      return {
+        ...state,
+        wasGenerating: isGenerating,
+        lastObservedMarker: latestUserTurnMarker,
+        lastObservedAssistantCount: assistantTurnCount,
+        turnStartAssistantCount: assistantTurnCount,
+        lastSeenFingerprint: latestFingerprint,
+        sawTurnActivity: Boolean(isGenerating || startedWithCompletedAssistant),
+        idleStableFingerprint: startedWithCompletedAssistant ? completionFingerprint : null,
+        idleStablePassCount: startedWithCompletedAssistant ? 1 : 0,
+        followUpDelayMs: startedWithCompletedAssistant ? GEMINI_IDLE_STABILITY_DELAY_MS : null,
+        shouldNotify: false
+      };
+    }
+    const fingerprintChanged = Boolean(latestFingerprint) && latestFingerprint !== state.lastSeenFingerprint;
+    const assistantAdvanced = assistantTurnCount > state.turnStartAssistantCount;
+    const sawTurnActivity = state.sawTurnActivity || isGenerating || fingerprintChanged || assistantAdvanced;
+    if (isGenerating) {
+      return {
+        ...state,
+        wasGenerating: true,
+        lastObservedAssistantCount: assistantTurnCount,
+        lastSeenFingerprint: latestFingerprint ?? state.lastSeenFingerprint,
+        sawTurnActivity,
+        idleStableFingerprint: null,
+        idleStablePassCount: 0,
+        followUpDelayMs: null,
+        shouldNotify: false
+      };
+    }
+    const canConsiderCompletion = assistantAligned && Boolean(completionFingerprint) && sawTurnActivity && latestUserTurnMarker !== state.lastCompletedMarker;
+    if (!canConsiderCompletion) {
+      return {
+        ...state,
+        wasGenerating: false,
+        lastObservedAssistantCount: assistantTurnCount,
+        lastSeenFingerprint: latestFingerprint ?? state.lastSeenFingerprint,
+        sawTurnActivity,
+        idleStableFingerprint: null,
+        idleStablePassCount: 0,
+        followUpDelayMs: null,
+        shouldNotify: false
+      };
+    }
+    const idleStablePassCount = completionFingerprint === state.idleStableFingerprint ? state.idleStablePassCount + 1 : 1;
+    const shouldNotify = state.wasGenerating || idleStablePassCount >= 2;
+    if (shouldNotify) {
+      return {
+        ...state,
+        wasGenerating: false,
+        lastCompletedFingerprint: completionFingerprint,
+        lastCompletedMarker: latestUserTurnMarker,
+        lastObservedAssistantCount: assistantTurnCount,
+        lastSeenFingerprint: latestFingerprint,
+        sawTurnActivity: false,
+        idleStableFingerprint: null,
+        idleStablePassCount: 0,
+        followUpDelayMs: null,
+        shouldNotify: true
+      };
+    }
+    return {
+      ...state,
+      wasGenerating: false,
+      lastObservedAssistantCount: assistantTurnCount,
+      lastSeenFingerprint: latestFingerprint,
+      sawTurnActivity,
+      idleStableFingerprint: completionFingerprint,
+      idleStablePassCount,
+      followUpDelayMs: GEMINI_IDLE_STABILITY_DELAY_MS,
+      shouldNotify: false
+    };
+  }
+
+  // src/adapters/gemini.js
+  var STOP_TEXT_FRAGMENTS3 = [
+    "stop generating",
+    "stop response",
+    "stop responding",
+    "\u505C\u6B62\u751F\u6210",
+    "\u505C\u6B62\u56DE\u590D",
+    "\u505C\u6B62\u56DE\u7B54"
+  ];
+  var TYPING_TEXT_FRAGMENTS = [
+    "gemini is typing",
+    "gemini \u6B63\u5728\u8F93\u5165"
+  ];
+  var GENERIC_TITLES = /* @__PURE__ */ new Set([
+    "gemini",
+    "google gemini",
+    "chat with gemini",
+    "\u4E0E gemini \u5BF9\u8BDD"
+  ]);
+  function normalizeText3(value) {
+    return String(value ?? "").trim().toLowerCase();
+  }
+  function hasKeywordToken(value, keywords) {
+    return normalizeText3(value).split(/[^a-z0-9]+/).filter(Boolean).some((token) => keywords.includes(token));
+  }
+  function getClassTokens2(node) {
+    return [
+      ...node.classList ?? [],
+      ...String(getAttribute(node, "class") ?? "").split(/\s+/).filter(Boolean)
+    ];
+  }
+  function hasClassToken2(node, token) {
+    return getClassTokens2(node).map((entry) => entry.toLowerCase()).includes(token.toLowerCase());
+  }
+  function hasAssistantRole(node) {
+    const roleCandidates = [
+      getAttribute(node, "data-response-role"),
+      getAttribute(node, "data-message-role"),
+      getAttribute(node, "data-role"),
+      getAttribute(node, "role"),
+      getAttribute(node, "aria-label")
+    ].map(normalizeText3).filter(Boolean);
+    return roleCandidates.some(
+      (value) => value.includes("model") || value.includes("assistant") || value.includes("response")
+    );
+  }
+  function isAssistantContainer(node) {
+    return node?.tagName === "model-response" || node?.tagName === "assistant-messages-primary" || hasClassToken2(node, "model-response") || hasClassToken2(node, "assistant-messages-primary-container") || hasAssistantRole(node);
+  }
+  function findMessageContentNode(node) {
+    return findFirstElement(
+      node,
+      (entry) => entry.tagName === "message-content" || entry.tagName === "assistant-messages-primary" || hasClassToken2(entry, "response-content") || hasClassToken2(entry, "model-response-text") || hasClassToken2(entry, "message-text")
+    ) ?? node;
+  }
+  function findGeminiMessages(snapshot) {
+    const assistantNodes = findGeminiAssistantNodes(snapshot);
+    const messages = assistantNodes.map((node) => ({
+      role: "assistant",
+      blocks: extractBlocks(findMessageContentNode(node))
+    }));
+    if (messages.length > 0) {
+      return messages;
+    }
+    return findAllElements(
+      snapshot,
+      (node) => node.tagName === "message-content" || node.tagName === "assistant-messages-primary" || hasClassToken2(node, "response-content") || hasClassToken2(node, "model-response-text") || hasClassToken2(node, "message-text") || hasClassToken2(node, "assistant-messages-primary-container"),
+      { stopOnMatch: true }
+    ).map((node) => ({
+      role: "assistant",
+      blocks: extractBlocks(node)
+    }));
+  }
+  function findGeminiAssistantNodes(snapshot) {
+    const assistantNodes = findAllElements(snapshot, (node) => isAssistantContainer(node), {
+      stopOnMatch: true
+    });
+    if (assistantNodes.length > 0) {
+      return assistantNodes;
+    }
+    return findAllElements(
+      snapshot,
+      (node) => node.tagName === "message-content" || node.tagName === "assistant-messages-primary" || hasClassToken2(node, "response-content") || hasClassToken2(node, "model-response-text") || hasClassToken2(node, "message-text") || hasClassToken2(node, "assistant-messages-primary-container"),
+      { stopOnMatch: true }
+    );
+  }
+  function hasStructuralStopSignal3(button) {
+    const identifiers = [
+      getAttribute(button, "data-testid"),
+      getAttribute(button, "testid"),
+      getAttribute(button, "data-test-id"),
+      getAttribute(button, "id")
+    ].filter(Boolean);
+    return identifiers.some((value) => hasKeywordToken(value, ["stop", "abort", "cancel"]));
+  }
+  function hasLocalizedStopText2(button) {
+    const text = normalizeText3(getAccessibleText(button));
+    return STOP_TEXT_FRAGMENTS3.some((fragment) => text.includes(fragment));
+  }
+  function hasLiveStopButtonState(button) {
+    return hasClassToken2(button, "send-button") && hasClassToken2(button, "stop");
+  }
+  function hasTypingStatus(snapshot) {
+    const text = normalizeText3(getTextContent(snapshot));
+    return TYPING_TEXT_FRAGMENTS.some((fragment) => text.includes(fragment));
+  }
+  function hasStopControl4(snapshot) {
+    return findAllElements(
+      snapshot,
+      (node) => node.tagName === "button" || getAttribute(node, "role") === "button"
+    ).some(
+      (button) => hasStructuralStopSignal3(button) || hasLocalizedStopText2(button) || hasLiveStopButtonState(button)
+    );
+  }
+  function findUserQueryNodes(snapshot) {
+    return findAllElements(snapshot, (node) => node.tagName === "user-query", {
+      stopOnMatch: true
+    });
+  }
+  function extractUserPromptText(node) {
+    const paragraphTexts = findAllElements(node, (entry) => entry.tagName === "p", {
+      stopOnMatch: true
+    }).map((entry) => getTextContent(entry)).filter(Boolean);
+    if (paragraphTexts.length > 0) {
+      return paragraphTexts[paragraphTexts.length - 1];
+    }
+    return getTextContent(node).replace(/^(你说|you said)\s*/i, "").trim();
+  }
+  function findLatestUserPrompt(snapshot) {
+    const userQueries = findUserQueryNodes(snapshot);
+    if (userQueries.length === 0) {
+      return null;
+    }
+    return extractUserPromptText(userQueries[userQueries.length - 1]);
+  }
+  function findGeminiTitle(snapshot, pageTitle) {
+    const title = findTitle(snapshot, pageTitle);
+    const normalizedTitle = normalizeText3(title);
+    const latestPrompt = findLatestUserPrompt(snapshot);
+    if (latestPrompt && GENERIC_TITLES.has(normalizedTitle)) {
+      return latestPrompt;
+    }
+    return title;
+  }
+  var GeminiAdapter = {
+    matchesLocation(url) {
+      return /https:\/\/gemini\.google\.com\//i.test(url);
+    },
+    getSiteName() {
+      return "Gemini";
+    },
+    supportsExport() {
+      return false;
+    },
+    extractConversation(snapshot, pageTitle = "Gemini") {
+      return createConversation("Gemini", findGeminiTitle(snapshot, pageTitle), findGeminiMessages(snapshot));
+    },
+    isGenerating(snapshot, options = {}) {
+      if (options.networkGenerationActive) {
+        return true;
+      }
+      if (options.networkGenerationIdleOverrideActive) {
+        return false;
+      }
+      return hasStopControl4(snapshot) || hasTypingStatus(snapshot);
+    },
+    getLatestAssistantFingerprint(snapshot, pageTitle = "Gemini") {
+      return fingerprintLatestAssistant(this.extractConversation(snapshot, pageTitle));
+    },
+    getCompletionStateInput(snapshot, pageTitle = "Gemini", options = {}) {
+      return {
+        isGenerating: this.isGenerating(snapshot, options),
+        latestFingerprint: this.getLatestAssistantFingerprint(snapshot, pageTitle, options),
+        latestUserTurnMarker: this.getLatestAssistantMarker(snapshot, pageTitle, options),
+        userTurnCount: findUserQueryNodes(snapshot).length,
+        assistantTurnCount: findGeminiAssistantNodes(snapshot).length
+      };
+    },
+    transitionCompletionState(previousState, currentState) {
+      return transitionGeminiCompletionState(previousState, currentState);
+    },
+    getLatestAssistantMarker(snapshot) {
+      const latestPrompt = findLatestUserPrompt(snapshot);
+      if (!latestPrompt) {
+        return null;
+      }
+      return `${findUserQueryNodes(snapshot).length}:${latestPrompt}`;
+    }
+  };
+
   // src/adapters/index.js
-  var ADAPTERS = [ChatGPTAdapter, ClaudeAdapter, DeepSeekAdapter];
+  var ADAPTERS = [ChatGPTAdapter, ClaudeAdapter, DeepSeekAdapter, GeminiAdapter];
   function getAdapterForUrl(url) {
     return ADAPTERS.find((adapter) => adapter.matchesLocation(url)) ?? null;
   }
@@ -696,11 +1031,13 @@
           shouldNotify: false
         };
       }
-      const shouldNotify2 = latestMarker !== previousCompletedMarker && (previousState.wasGenerating || latestMarker !== previousObservedMarker);
+      const markerChanged = latestMarker !== previousCompletedMarker;
+      const fingerprintChanged = Boolean(latestFingerprint) && latestFingerprint !== previousCompletedFingerprint;
+      const shouldNotify2 = markerChanged && (previousState.wasGenerating || fingerprintChanged);
       return {
         wasGenerating: false,
-        lastCompletedFingerprint: latestMarker !== previousCompletedMarker ? latestFingerprint : previousCompletedFingerprint,
-        lastCompletedMarker: latestMarker !== previousCompletedMarker ? latestMarker : previousCompletedMarker,
+        lastCompletedFingerprint: shouldNotify2 ? latestFingerprint : previousCompletedFingerprint,
+        lastCompletedMarker: shouldNotify2 ? latestMarker : previousCompletedMarker,
         lastObservedMarker: latestMarker,
         shouldNotify: shouldNotify2
       };
@@ -717,6 +1054,16 @@
 
   // src/content/runtime.js
   var DEEPSEEK_GENERATION_POLL_DELAY_MS = 1e3;
+  var GEMINI_NETWORK_END_ANALYZE_DELAY_MS = 75;
+  var GEMINI_NETWORK_IDLE_OVERRIDE_MS = 1e4;
+  var DEBUG_PREFIX = "[PromptPing]";
+  function debugLog(message, payload) {
+    if (payload === void 0) {
+      console.debug(DEBUG_PREFIX, message);
+      return;
+    }
+    console.debug(DEBUG_PREFIX, message, payload);
+  }
   function getAnalyzeRefreshOptions({
     hasPageDataProvider,
     wasGenerating: _wasGenerating
@@ -727,7 +1074,56 @@
     };
   }
   function getFollowUpAnalyzeDelay(state) {
+    if (typeof state?.followUpDelayMs === "number") {
+      return state.followUpDelayMs;
+    }
     return state?.wasGenerating ? DEEPSEEK_GENERATION_POLL_DELAY_MS : null;
+  }
+  function getResumeAnalyzeDelay(visibilityState) {
+    return visibilityState === "visible" ? 0 : null;
+  }
+  function getMutationObserverOptions() {
+    return {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: [
+        "aria-label",
+        "title",
+        "class",
+        "data-testid",
+        "data-test-id",
+        "testid",
+        "id",
+        "role",
+        "data-role",
+        "data-message-role",
+        "data-response-role"
+      ]
+    };
+  }
+  function getNextGenerationHiddenState({
+    wasHiddenDuringGeneration,
+    visibilityState,
+    nextWasGenerating,
+    shouldNotify
+  }) {
+    const isCurrentlyHidden = visibilityState !== "visible";
+    if (shouldNotify || !nextWasGenerating) {
+      return isCurrentlyHidden;
+    }
+    return wasHiddenDuringGeneration || isCurrentlyHidden;
+  }
+  function getHiddenStateAfterVisibilityChange({
+    wasHiddenDuringGeneration,
+    visibilityState,
+    wasGenerating
+  }) {
+    if (visibilityState !== "visible") {
+      return true;
+    }
+    return wasGenerating ? wasHiddenDuringGeneration : false;
   }
   function sendRuntimeMessage(message) {
     try {
@@ -736,11 +1132,18 @@
       return Promise.resolve(null);
     }
   }
+  function isGeminiNetworkActivityMessage(message) {
+    return message?.type === "GEMINI_NETWORK_ACTIVITY" && (message.phase === "stream-start" || message.phase === "stream-end");
+  }
+  function getGeminiNetworkAnalyzeDelay(phase) {
+    return phase === "stream-end" ? GEMINI_NETWORK_END_ANALYZE_DELAY_MS : 0;
+  }
   function bootContentScript() {
     const adapter = getAdapterForUrl(window.location.href);
     if (!adapter || !document.body) {
       return null;
     }
+    const instanceId = Math.random().toString(36).slice(2, 8);
     const pageDataProvider = adapter.getSiteName() === "DeepSeek" ? createDeepSeekHistoryProvider() : null;
     let state = {
       wasGenerating: false,
@@ -750,6 +1153,14 @@
     };
     let timerId = null;
     let disposed = false;
+    let wasHiddenDuringGeneration = document.visibilityState !== "visible";
+    let geminiNetworkGenerationCount = 0;
+    let geminiNetworkIdleOverrideUntil = 0;
+    debugLog("boot", {
+      instanceId,
+      site: adapter.getSiteName(),
+      visibilityState: document.visibilityState
+    });
     function buildSnapshot() {
       return createDomSnapshot(document.body);
     }
@@ -784,8 +1195,9 @@
     }
     async function analyze() {
       if (disposed) {
-        return;
+        return null;
       }
+      const analyzeObservedHidden = wasHiddenDuringGeneration || document.visibilityState !== "visible";
       const snapshot = buildSnapshot();
       const adapterOptions = await getAdapterOptions(
         getAnalyzeRefreshOptions({
@@ -793,31 +1205,90 @@
           wasGenerating: state.wasGenerating
         })
       );
+      const runtimeAdapterOptions = {
+        ...adapterOptions,
+        networkGenerationActive: geminiNetworkGenerationCount > 0,
+        networkGenerationIdleOverrideActive: Date.now() < geminiNetworkIdleOverrideUntil
+      };
       if (disposed) {
-        return;
+        return null;
       }
-      const isGenerating = adapter.isGenerating(snapshot, adapterOptions);
-      const latestFingerprint = adapter.getLatestAssistantFingerprint(
-        snapshot,
-        document.title,
-        adapterOptions
-      );
-      const latestMarker = typeof adapter.getLatestAssistantMarker === "function" ? adapter.getLatestAssistantMarker(snapshot, document.title, adapterOptions) : null;
-      const nextState = transitionCompletionState(state, {
-        isGenerating,
-        latestFingerprint,
-        latestMarker
-      });
+      const completionInput = typeof adapter.getCompletionStateInput === "function" ? adapter.getCompletionStateInput(snapshot, document.title, runtimeAdapterOptions) : {
+        isGenerating: adapter.isGenerating(snapshot, runtimeAdapterOptions),
+        latestFingerprint: adapter.getLatestAssistantFingerprint(
+          snapshot,
+          document.title,
+          runtimeAdapterOptions
+        ),
+        latestMarker: typeof adapter.getLatestAssistantMarker === "function" ? adapter.getLatestAssistantMarker(
+          snapshot,
+          document.title,
+          runtimeAdapterOptions
+        ) : null
+      };
+      const nextState = typeof adapter.transitionCompletionState === "function" ? adapter.transitionCompletionState(state, completionInput) : transitionCompletionState(state, completionInput);
+      const latestFingerprint = completionInput.latestFingerprint ?? null;
+      const latestMarker = completionInput.latestMarker ?? completionInput.latestUserTurnMarker ?? null;
+      const isGenerating = Boolean(completionInput.isGenerating);
+      if (nextState.shouldNotify || state.wasGenerating !== nextState.wasGenerating || state.lastCompletedMarker !== nextState.lastCompletedMarker) {
+        debugLog("analyze", {
+          instanceId,
+          site: adapter.getSiteName(),
+          isGenerating,
+          latestFingerprint,
+          latestMarker,
+          previousWasGenerating: state.wasGenerating,
+          previousCompletedFingerprint: state.lastCompletedFingerprint,
+          previousCompletedMarker: state.lastCompletedMarker,
+          previousObservedMarker: state.lastObservedMarker,
+          nextWasGenerating: nextState.wasGenerating,
+          nextCompletedFingerprint: nextState.lastCompletedFingerprint,
+          nextCompletedMarker: nextState.lastCompletedMarker,
+          nextObservedMarker: nextState.lastObservedMarker,
+          nextShouldNotify: nextState.shouldNotify,
+          analyzeObservedHidden
+        });
+      }
       if (nextState.shouldNotify) {
-        const conversation = adapter.extractConversation(snapshot, document.title, adapterOptions);
-        await sendRuntimeMessage({
+        const conversation = adapter.extractConversation(
+          snapshot,
+          document.title,
+          runtimeAdapterOptions
+        );
+        const response = await sendRuntimeMessage({
           type: "MODEL_RESPONSE_COMPLETED",
           site: adapter.getSiteName(),
           conversationTitle: conversation.title,
-          fingerprint: nextState.lastCompletedFingerprint
+          fingerprint: nextState.lastCompletedFingerprint,
+          wasHidden: analyzeObservedHidden
         });
+        debugLog("MODEL_RESPONSE_COMPLETED", {
+          instanceId,
+          site: adapter.getSiteName(),
+          conversationTitle: conversation.title,
+          fingerprint: nextState.lastCompletedFingerprint,
+          wasHidden: analyzeObservedHidden,
+          response
+        });
+        debugLog(
+          "MODEL_RESPONSE_COMPLETED_JSON",
+          JSON.stringify({
+            instanceId,
+            site: adapter.getSiteName(),
+            conversationTitle: conversation.title,
+            fingerprint: nextState.lastCompletedFingerprint,
+            wasHidden: analyzeObservedHidden,
+            response
+          })
+        );
       }
       state = nextState;
+      wasHiddenDuringGeneration = getNextGenerationHiddenState({
+        wasHiddenDuringGeneration,
+        visibilityState: document.visibilityState,
+        nextWasGenerating: nextState.wasGenerating,
+        shouldNotify: nextState.shouldNotify
+      });
       const followUpDelay = getFollowUpAnalyzeDelay(state);
       if (followUpDelay != null) {
         scheduleAnalyze(followUpDelay);
@@ -838,11 +1309,52 @@
     const observer = new MutationObserver(() => {
       scheduleAnalyze();
     });
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true
-    });
+    function handleGeminiNetworkActivity(message) {
+      if (!isGeminiNetworkActivityMessage(message)) {
+        return;
+      }
+      geminiNetworkGenerationCount = Math.max(0, Number(message.activeCount ?? 0));
+      if (message.phase === "stream-start") {
+        geminiNetworkIdleOverrideUntil = 0;
+      } else if (geminiNetworkGenerationCount === 0) {
+        geminiNetworkIdleOverrideUntil = Date.now() + GEMINI_NETWORK_IDLE_OVERRIDE_MS;
+      }
+      debugLog("gemini-network", {
+        instanceId,
+        phase: message.phase,
+        activeCount: geminiNetworkGenerationCount,
+        idleOverrideActive: Date.now() < geminiNetworkIdleOverrideUntil,
+        visibilityState: document.visibilityState
+      });
+      scheduleAnalyze(getGeminiNetworkAnalyzeDelay(message.phase));
+    }
+    function scheduleResumeAnalyze() {
+      const delay = getResumeAnalyzeDelay(document.visibilityState);
+      if (delay != null) {
+        scheduleAnalyze(delay);
+      }
+    }
+    function handleVisibilityChange() {
+      wasHiddenDuringGeneration = getHiddenStateAfterVisibilityChange({
+        wasHiddenDuringGeneration,
+        visibilityState: document.visibilityState,
+        wasGenerating: state.wasGenerating
+      });
+      debugLog("visibilitychange", {
+        instanceId,
+        visibilityState: document.visibilityState,
+        wasHiddenDuringGeneration,
+        wasGenerating: state.wasGenerating
+      });
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      scheduleResumeAnalyze();
+    }
+    observer.observe(document.body, getMutationObserverOptions());
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", scheduleResumeAnalyze);
+    window.addEventListener("pageshow", scheduleResumeAnalyze);
     const handleRuntimeMessage = (message, _sender, sendResponse) => {
       if (disposed) {
         return false;
@@ -852,18 +1364,24 @@
           sendResponse({
             supported: true,
             siteName: adapter.getSiteName(),
-            conversationTitle: conversation.title
+            conversationTitle: conversation.title,
+            exportSupported: adapter.supportsExport?.() ?? true
           });
         }).catch(() => {
           sendResponse({
             supported: true,
             siteName: adapter.getSiteName(),
-            conversationTitle: document.title
+            conversationTitle: document.title,
+            exportSupported: adapter.supportsExport?.() ?? true
           });
         });
         return true;
       }
       if (message?.type === "EXPORT_CURRENT_CONVERSATION") {
+        if (adapter.supportsExport?.() === false) {
+          sendResponse(null);
+          return false;
+        }
         void getConversation({ forceFreshPageData: true }).then((conversation) => {
           sendResponse(conversation);
         }).catch(() => {
@@ -871,18 +1389,30 @@
         });
         return true;
       }
+      if (message?.type === "FORCE_ANALYZE") {
+        void analyze().then(() => sendResponse({ ok: true }));
+        return true;
+      }
+      if (isGeminiNetworkActivityMessage(message)) {
+        handleGeminiNetworkActivity(message);
+        return false;
+      }
       return false;
     };
     chrome.runtime.onMessage.addListener(handleRuntimeMessage);
     void analyze();
     return {
       dispose() {
+        debugLog("dispose", { instanceId, site: adapter.getSiteName() });
         disposed = true;
         if (timerId) {
           clearTimeout(timerId);
           timerId = null;
         }
         observer.disconnect();
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        window.removeEventListener("focus", scheduleResumeAnalyze);
+        window.removeEventListener("pageshow", scheduleResumeAnalyze);
         chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
       }
     };

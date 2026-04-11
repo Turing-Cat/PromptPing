@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  createChromeNotificationOptions,
   createResponseFingerprint,
   getNotificationIconPath,
   shouldSendCompletionNotification,
@@ -50,8 +51,37 @@ test("shouldSendCompletionNotification only notifies background tabs with new fi
     }),
     false,
   );
+  assert.equal(
+    shouldSendCompletionNotification({
+      activeTabId: 3,
+      senderTabId: 3,
+      fingerprint: "abc",
+      lastFingerprint: "old",
+      wasHidden: true,
+    }),
+    true,
+  );
 });
 
 test("getNotificationIconPath uses a raster icon for Chrome notifications", () => {
   assert.equal(getNotificationIconPath(), "assets/icon.png");
+});
+
+test("createChromeNotificationOptions uses a high-visibility configuration", () => {
+  assert.deepEqual(
+    createChromeNotificationOptions({
+      iconUrl: "chrome-extension://id/assets/icon.png",
+      title: "PromptPing",
+      message: "Gemini · Chats · replied",
+    }),
+    {
+      type: "basic",
+      iconUrl: "chrome-extension://id/assets/icon.png",
+      title: "PromptPing",
+      message: "Gemini · Chats · replied",
+      priority: 2,
+      requireInteraction: true,
+      silent: false,
+    },
+  );
 });

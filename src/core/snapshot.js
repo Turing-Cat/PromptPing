@@ -2,7 +2,7 @@ function collapseWhitespace(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
-const KNOWN_SITE_SUFFIXES = ["ChatGPT", "Claude", "DeepSeek"];
+const KNOWN_SITE_SUFFIXES = ["ChatGPT", "Claude", "DeepSeek", "Gemini"];
 
 function collectText(node, parts) {
   if (!node) {

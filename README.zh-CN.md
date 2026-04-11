@@ -7,10 +7,14 @@ PromptPing 是一个面向聊天网站的轻量 Chrome 扩展。
 
 ## 当前状态
 
-- 当前支持：`ChatGPT`、`Claude`、`DeepSeek`
+- 当前支持：
+  - `ChatGPT`：通知和导出
+  - `Claude`：通知和导出
+  - `DeepSeek`：通知和导出
+  - `Gemini`：仅通知
 - 已实现：
   - 回复完成后浏览器通知
-  - 导出当前会话为 Markdown
+  - 在支持导出的站点将当前会话导出为 Markdown
   - 中英文界面
 
 ## 安装
@@ -22,8 +26,8 @@ PromptPing 是一个面向聊天网站的轻量 Chrome 扩展。
 
 ## 使用
 
-- 打开 ChatGPT、Claude 或 DeepSeek 会话页面
-- 点击扩展图标导出当前聊天
+- 打开 ChatGPT、Claude、DeepSeek 或 Gemini 会话页面
+- 在 ChatGPT、Claude 或 DeepSeek 页面点击扩展图标导出当前聊天
 - 切换到其他标签页后，等待回复完成，浏览器会发送提醒
 
 ## 说明
